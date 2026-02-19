@@ -1,0 +1,24 @@
+[
+  {
+    "id": 1,
+    "name": "Daily AI News",
+    "schedule": "daily",
+    "action": {
+      "type": "search",
+      "query": "AI news today"
+    },
+    "last_run": null,
+    "enabled": true
+  },
+  {
+    "id": 2,
+    "name": "Crypto Prices",
+    "schedule": "hourly",
+    "action": {
+      "type": "search",
+      "query": "Bitcoin price today"
+    },
+    "last_run": null,
+    "enabled": true
+  }
+]
