@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>方块塔防 - Block Defense</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            background: #16213e;
+            border: 3px solid #0f3460;
+            box-shadow: 0 0 30px rgba(0,200,255,0.2);
+        }
+        #ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #e94560;
+            font-size: 18px;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            color: #888;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
+    <div id="ui">
+        <div>分数: <span id="score">0</span></div>
+        <div>波次: <span id="wave">1</span></div>
+        <div>生命: <span id="lives">100</span></div>
+    </div>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="instructions">← → 移动方块 | ↑ 旋转 | 空格 加速下落</div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // 游戏状态
+        let score = 0;
+        let wave = 1;
+        let lives = 100;
+        
+        // 方块类型（防御塔）
+        const TOWER_TYPES = [
+            { color: '#e94560', name: '箭塔', damage: 10, range: 100 },
+            { color: '#f39c12', name: '炮塔', damage: 25, range: 80 },
+            { color: '#3498db', name: '冰塔', damage: 5, range: 120, slow: true },
+            { color: '#9b59b6', name: '电塔', damage: 15, range: 90, chain: true },
+            { color: '#2ecc71', name: '毒塔', damage: 8, range: 100, poison: true }
+        ];
+        
+        // 怪物类型
+        const ENEMY_TYPES = [
+            { color: '#ff6b6b', hp: 30, speed: 1, reward: 10 },
+            { color: '#ffd93d', hp: 60, speed: 0.8, reward: 20 },
+            { color: '#6c5ce7', hp: 100, speed: 0.5, reward: 40 }
+        ];
+        
+        // 当前下落的方块
+        let currentBlock = null;
+        let placedBlocks = [];
+        let enemies = [];
+        let projectiles = [];
+        
+        // 平台（中间区域）
+        const platform = {
+            x: 250,
+            y: 400,
+            width: 300,
+            height: 20
+        };
+        
+        // 创建新方块
+        function createBlock() {
+            const type = TOWER_TYPES[Math.floor(Math.random() * TOWER_TYPES.length)];
+            currentBlock = {
+                x: 375,
+                y: 50,
+                width: 40,
+                height: 40,
+                type: type,
+                rotation: 0
+            };
+        }
+        
+        // 方块旋转
+        function rotateBlock() {
+            if (!currentBlock) return;
+            currentBlock.rotation = (currentBlock.rotation + 90) % 360;
+        }
+        
+        // 移动方块
+        function moveBlock(dx) {
+            if (!currentBlock) return;
+            currentBlock.x += dx;
+            // 边界检查
+            if (currentBlock.x < 0) currentBlock.x = 0;
+            if (currentBlock.x > canvas.width - 40) currentBlock.x = canvas.width - 40;
+        }
+        
+        // 放置方块
+        function placeBlock() {
+            if (!currentBlock) return;
+            
+            // 检查是否落在平台上
+            const blockBottom = currentBlock.y + 40;
+            const blockLeft = currentBlock.x;
+            const blockRight = currentBlock.x + 40;
+            
+            if (blockBottom >= platform.y && 
+                blockLeft < platform.x + platform.width && 
+                blockRight > platform.x) {
+                // 成功放置
+                placedBlocks.push({
+                    ...currentBlock,
+                    placed: true,
+                    health: 100
+                });
+                score += 10;
+            } else {
+                // 掉下去了
+                score -= 5;
+            }
+            
+            createBlock();
+        }
+        
+        // 生成敌人
+        function spawnEnemy() {
+            const type = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
+            const fromLeft = Math.random() > 0.5;
+            enemies.push({
+                x: fromLeft ? -20 : canvas.width + 20,
+                y: 450,
+                type: type,
+                hp: type.hp,
+                maxHp: type.hp,
+                speed: type.speed * (1 + wave * 0.1)
+            });
+        }
+        
+        // 射击
+        function shoot(block) {
+            // 找最近的敌人
+            let nearest = null;
+            let minDist = block.type.range;
+            
+            for (let enemy of enemies) {
+                const dx = enemy.x - block.x;
+                const dy = enemy.y - block.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                if (dist < minDist) {
+                    minDist = dist;
+                    nearest = enemy;
+                }
+            }
+            
+            if (nearest) {
+                projectiles.push({
+                    x: block.x + 20,
+                    y: block.y + 40,
+                    target: nearest,
+                    damage: block.type.damage,
+                    color: block.type.color,
+                    speed: 8
+                });
+            }
+        }
+        
+        // 更新游戏
+        function update() {
+            // 下落方块
+            if (currentBlock) {
+                currentBlock.y += 1;
+                // 落地检测
+                if (currentBlock.y >= platform.y - 40) {
+                    placeBlock();
+                }
+            }
+            
+            // 敌人移动
+            for (let enemy of enemies) {
+                // 向平台移动
+                const dx = platform.x + platform.width/2 - enemy.x;
+                if (Math.abs(dx) > 5) {
+                    enemy.x += Math.sign(dx) * enemy.speed;
+                } else {
+                    // 到达平台，开始攻击
+                    lives -= 0.5;
+                    if (lives <= 0) lives = 0;
+                }
+            }
+            
+            // 子弹移动
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const p = projectiles[i];
+                const dx = p.target.x - p.x;
+                const dy = p.target.y - p.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+                
+                if (dist < 10) {
+                    // 命中
+                    p.target.hp -= p.damage;
+                    projectiles.splice(i, 1);
+                    
+                    if (p.target.hp <= 0) {
+                        const idx = enemies.indexOf(p.target);
+                        if (idx > -1) {
+                            score += p.target.type.reward;
+                            enemies.splice(idx, 1);
+                        }
+                    }
+                } else {
+                    p.x += (dx/dist) * p.speed;
+                    p.y += (dy/dist) * p.speed;
+                }
+            }
+            
+            // 塔自动射击
+            for (let block of placedBlocks) {
+                if (Math.random() < 0.02) {
+                    shoot(block);
+                }
+            }
+            
+            // 更新UI
+            document.getElementById('score').textContent = score;
+            document.getElementById('wave').textContent = wave;
+            document.getElementById('lives').textContent = Math.floor(lives);
+            
+            // 波次增加
+            if (enemies.length === 0 && Math.random() < 0.01) {
+                wave++;
+                for (let i = 0; i < wave * 2; i++) {
+                    setTimeout(spawnEnemy, i * 1000);
+                }
+            }
+        }
+        
+        // 绘制游戏
+        function draw() {
+            // 清空画布
+            ctx.fillStyle = '#16213e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制平台
+            ctx.fillStyle = '#0f3460';
+            ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+            
+            // 绘制已放置的方块（防御塔）
+            for (let block of placedBlocks) {
+                ctx.fillStyle = block.type.color;
+                ctx.fillRect(block.x, block.y, 40, 40);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(block.x, block.y, 40, 40);
+            }
+            
+            // 绘制当前下落的方块
+            if (currentBlock) {
+                ctx.save();
+                ctx.translate(currentBlock.x + 20, currentBlock.y + 20);
+                ctx.rotate(currentBlock.rotation * Math.PI / 180);
+                ctx.fillStyle = currentBlock.type.color;
+                ctx.fillRect(-20, -20, 40, 40);
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-20, -20, 40, 40);
+                ctx.restore();
+            }
+            
+            // 绘制敌人
+            for (let enemy of enemies) {
+                ctx.fillStyle = enemy.type.color;
+                ctx.beginPath();
+                ctx.arc(enemy.x, enemy.y, 15, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // 血条
+                const hpPercent = enemy.hp / enemy.maxHp;
+                ctx.fillStyle = '#333';
+                ctx.fillRect(enemy.x - 15, enemy.y - 25, 30, 5);
+                ctx.fillStyle = '#e94560';
+                ctx.fillRect(enemy.x - 15, enemy.y - 25, 30 * hpPercent, 5);
+            }
+            
+            // 绘制子弹
+            for (let p of projectiles) {
+                ctx.fillStyle = p.color;
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // 游戏循环
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowLeft':
+                    moveBlock(-20);
+                    break;
+                case 'ArrowRight':
+                    moveBlock(20);
+                    break;
+                case 'ArrowUp':
+                    rotateBlock();
+                    break;
+                case ' ':
+                    if (currentBlock) currentBlock.y += 10;
+                    break;
+            }
+        });
+        
+        // 初始化
+        createBlock();
+        
+        // 初始敌人
+        for (let i = 0; i < 3; i++) {
+            setTimeout(spawnEnemy, i * 2000);
+        }
+        
+        gameLoop();
+    </script>
+</body>
+</html>
