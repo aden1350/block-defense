@@ -95,7 +95,17 @@
         );
         Composite.add(world, platform);
 
-        // 底部检测（掉出后删除）
+        // 平台下方加平地，防止怪物坠落
+        const ground = Bodies.rectangle(
+            width/2,
+            height - 10,
+            width,
+            20,
+            { isStatic: true, render: { fillStyle: '#222' } }
+        );
+        Composite.add(world, ground);
+
+        // 底部检测（掉出后删除）- 移到更下方
         const deathZone = Bodies.rectangle(width/2, height + 50, width * 2, 50, { isStatic: true, isSensor: true });
         Composite.add(world, deathZone);
 
@@ -217,8 +227,8 @@
             placedBlocks.push(currentBlock);
             currentBlock = null;
             
-            // 1秒后生成新方块
-            setTimeout(createBlock, 1000);
+            // 立即生成新方块（不等候）
+            createBlock();
         }
 
         // 快速下落
